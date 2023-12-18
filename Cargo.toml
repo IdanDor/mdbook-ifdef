@@ -1,0 +1,16 @@
+[package]
+authors = ["Idan Dor <idandor@gmail.com>"]
+name = "mdbook-censored"
+version = "0.1.0"
+edition = "2021"
+license = "MIT/Apache-2.0"
+
+
+[[bin]]
+name = "mdbook-censored"
+
+[dependencies]
+clap = {version = "~4", features = ["derive"]}
+mdbook = "~0.4"
+serde_json = "~1.0"
+regex = "~1.10"
