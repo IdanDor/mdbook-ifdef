@@ -17,20 +17,24 @@ use grammer::FakeMarkdownParser;
 pub mod flags;
 use flags::FlagsHolder;
 
-pub struct CensorProcessor {
+pub struct IfdefProcessor {
     flags: FlagsHolder,
 }
 
 
-impl Default for CensorProcessor {
+impl Default for IfdefProcessor {
     fn default() -> Self {
-        CensorProcessor{flags: FlagsHolder::default()}
+        IfdefProcessor{flags: FlagsHolder::default()}
     }
 }
 
-impl CensorProcessor {
-    pub fn new(flags: Vec<String>) -> Self {
-        CensorProcessor{flags: FlagsHolder::new(flags)}
+impl IfdefProcessor {
+    pub fn new(flags: FlagsHolder) -> Self {
+        IfdefProcessor{flags}
+    }
+
+    pub fn from_vec(flags: Vec<String>) -> Self {
+        IfdefProcessor{flags: FlagsHolder::new(flags)}
     }
 
     fn process_chapter(&self, mut chapter: Chapter) -> Option<Chapter> {
@@ -54,9 +58,9 @@ impl CensorProcessor {
     }
 }
 
-impl Preprocessor for CensorProcessor {
+impl Preprocessor for IfdefProcessor {
     fn name(&self) -> &str {
-        "censor"
+        "ifdef"
     }
 
     fn run(&self, _ctx: &PreprocessorContext, mut book: Book) -> Result<Book, Error> { 

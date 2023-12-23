@@ -1,3 +1,11 @@
+#![deny(
+    warnings,
+    rustdoc::all,
+    clippy::all,
+    clippy::cargo,
+    clippy::nursery,
+    clippy::pedantic
+)]
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -6,14 +14,18 @@ use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor};
 
 
-use mdbook_censored::CensorProcessor;
+use mdbook_ifdef::IfdefProcessor;
+use mdbook_ifdef::flags::FlagsHolder;
 
 #[derive(Parser, Debug)]
 #[command(author, version)]
-/// Run as a mdbook preprocesser to censor your mdbook!
+/// Run as a mdbook preprocesser to ifdef your mdbook!
 struct Args {
     #[command(subcommand, name="renderer")]
     command: Option<Subcommands>,
+
+    #[arg(long, short='f')]
+    flags_file: Option<PathBuf>,
 
     #[arg(long, short='e', value_delimiter=',')]
     extra_flags: Vec<String>,
@@ -35,19 +47,34 @@ enum Subcommands {
     }
 }
 
-fn do_preprocessing() -> Result<(), Error> {
+fn do_preprocessing(flags: FlagsHolder) -> Result<(), Error> {
     let (ctx, book) = CmdPreprocessor::parse_input(io::stdin())?;
 
-    let censor = CensorProcessor::default();
-    let new_book = censor.run(&ctx, book)?;
+    let ifdef = IfdefProcessor::new(flags);
+    let new_book = ifdef.run(&ctx, book)?;
 
     serde_json::to_writer(io::stdout(), &new_book)?;
 
     Ok(())
 }
 
+fn parse_flags(flags_file: Option<PathBuf>, mut extra_flags: Vec<String>) -> Result<FlagsHolder, Error> {
+    let flags_content = match flags_file {
+        Some(path) => fs::read_to_string(path)?,
+        None => String::new(),
+    };
+
+    let mut flags: Vec<String> = flags_content.split_ascii_whitespace().flat_map(|word| word.split(',')).map(|flag| flag.to_owned()).collect();
+    flags.append(&mut extra_flags);
+
+    Ok(FlagsHolder::new(flags))
+}
+
 fn main() -> Result<(), Error> {
     let args = Args::parse();
+
+    let flags = parse_flags(args.flags_file, args.extra_flags)?;
+
     match args.command {
         Some(Subcommands::Supports{renderer: _renderer}) => {
             // We support all renderers
@@ -55,11 +82,9 @@ fn main() -> Result<(), Error> {
         },
         Some(Subcommands::Manual { target }) => {
             {
-                use mdbook_censored::grammer::FakeMarkdownParser;
-                use mdbook_censored::flags::FlagsHolder;
+                use mdbook_ifdef::grammer::FakeMarkdownParser;
 
-                println!("Using flags {:?}", &args.extra_flags);
-                let flags = FlagsHolder::new(args.extra_flags);
+                println!("Using flags {:?}", &flags);
                 for path in target.iter() {
                     println!("Staring file {path:?}");
                     let string = fs::read_to_string(path)?;
@@ -69,7 +94,7 @@ fn main() -> Result<(), Error> {
             Ok(())
         },
         None => {
-            if let Err(e) = do_preprocessing() {
+            if let Err(e) = do_preprocessing(flags) {
                 eprintln!("Preprocssing failed: {:?}", e);
                 Err(e)?
             };
