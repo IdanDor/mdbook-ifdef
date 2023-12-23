@@ -8,13 +8,15 @@ use mdbook::preprocess::{CmdPreprocessor, Preprocessor};
 
 use mdbook_censored::CensorProcessor;
 
-
 #[derive(Parser, Debug)]
 #[command(author, version)]
 /// Run as a mdbook preprocesser to censor your mdbook!
 struct Args {
     #[command(subcommand, name="renderer")]
     command: Option<Subcommands>,
+
+    #[arg(long, short='e', value_delimiter=',')]
+    extra_flags: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -54,9 +56,14 @@ fn main() -> Result<(), Error> {
         Some(Subcommands::Manual { target }) => {
             {
                 use mdbook_censored::grammer::FakeMarkdownParser;
+                use mdbook_censored::flags::FlagsHolder;
+
+                println!("Using flags {:?}", &args.extra_flags);
+                let flags = FlagsHolder::new(args.extra_flags);
                 for path in target.iter() {
+                    println!("Staring file {path:?}");
                     let string = fs::read_to_string(path)?;
-                    println!("Result: {:?}", FakeMarkdownParser::fake_markdown_parse_and_clean(&string));
+                    println!("Result: {:?}", FakeMarkdownParser::fake_markdown_parse_and_clean(&string, &flags));
                 }
             }
             Ok(())

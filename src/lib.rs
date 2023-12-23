@@ -6,49 +6,36 @@
     clippy::nursery,
     clippy::pedantic
 )]
-use std::collections::HashSet;
-
 use mdbook::BookItem;
 use mdbook::book::{Book, Chapter};
 use mdbook::errors::Error;
 use mdbook::preprocess::{PreprocessorContext, Preprocessor};
 
-use regex::Regex;
-
 pub mod grammer;
 use grammer::FakeMarkdownParser;
 
+pub mod flags;
+use flags::FlagsHolder;
+
 pub struct CensorProcessor {
-    flags: HashSet<String>,
+    flags: FlagsHolder,
 }
 
 
 impl Default for CensorProcessor {
     fn default() -> Self {
-        CensorProcessor{flags: HashSet::new()}
+        CensorProcessor{flags: FlagsHolder::default()}
     }
 }
 
 impl CensorProcessor {
     pub fn new(flags: Vec<String>) -> Self {
-        CensorProcessor{flags: HashSet::from_iter(flags.into_iter())}
+        CensorProcessor{flags: FlagsHolder::new(flags)}
     }
 
-    fn process_chapter(&self, mut chapter: Chapter) -> Option<Chapter>{
-        // @file_<flag> requires `flag` to be set for the chapter to stay.
-        let re = Regex::new(r"@file_(\w*)").unwrap();
-
-        for m in re.find_iter(&chapter.content) {
-            if !self.flags.contains(m.as_str()) {
-                // We are missing a flag, remove chapter.
-                return None;
-            }
-        }
-
-        // TODO: cleanup flags? -> move file flags to pest.
-
-        // Handle if/else
-        FakeMarkdownParser::fake_markdown_parse_and_clean("a b");
+    fn process_chapter(&self, mut chapter: Chapter) -> Option<Chapter> {
+        // Process contents, if None is returned - skip chapter and subsections.
+        chapter.content = FakeMarkdownParser::fake_markdown_parse_and_clean(&chapter.content, &self.flags)?;
 
         // Handle sub items recursively.
         chapter.sub_items = chapter.sub_items.into_iter().map(

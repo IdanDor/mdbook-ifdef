@@ -6,6 +6,8 @@ use once_cell::sync::OnceCell;
 use pest_derive::Parser;
 use pest::{Parser, iterators::Pair};
 
+use crate::flags::FlagsHolder;
+
 
 fn static_regex() -> &'static Regex {
     static FLAG_REGEX: OnceCell<Regex> = OnceCell::new();
@@ -17,21 +19,21 @@ fn static_regex() -> &'static Regex {
 
 #[derive(Parser)]
 #[grammar = "fake_md.pest"]
-pub struct FakeMarkdownParser {
-    contents: String
+pub struct FakeMarkdownParser<'a> {
+    contents: String,
+    ctx: &'a FlagsHolder
 }
 
-impl FakeMarkdownParser {
-    fn new() -> FakeMarkdownParser {
-        FakeMarkdownParser{contents: String::new()}
+impl<'a> FakeMarkdownParser<'a> {
+    fn new(ctx: &FlagsHolder) -> FakeMarkdownParser {
+        FakeMarkdownParser{contents: String::new(), ctx}
     }
 
     fn check_file_flag(&mut self, node: Pair<'_, Rule>) -> Option<()> {
-        println!("flag {:?}", node.as_str());
         // file_flag only has identifier and unwanted whitespace.
         let iden = node.into_inner().next().unwrap().as_str();
 
-        if iden == "abc" {
+        if self.ctx.contains(iden) {
             Some(())
         } else {  // Flag not in ctx, clear the file!
             None
@@ -47,14 +49,14 @@ impl FakeMarkdownParser {
                 Rule::flag_if => {
                     // file_flag only has identifier and unwanted whitespace.
                     let iden = inner_pair.into_inner().next().unwrap().as_str();
-                    if iden == "bbb" {
+                    if self.ctx.contains(iden) {
                         add_next = true;
                     }
                 },
                 Rule::flag_elif => {
                     // file_flag only has identifier and unwanted whitespace.
                     let iden = inner_pair.into_inner().next().unwrap().as_str();
-                    if iden == "bbb" {
+                    if self.ctx.contains(iden) {
                         add_next = true;
                     }
                 },
@@ -101,13 +103,13 @@ impl FakeMarkdownParser {
         Some(())
     }
 
-    pub fn fake_markdown_parse_and_clean(string: &str) -> Option<String> {
+    pub fn fake_markdown_parse_and_clean(string: &str, ctx: &FlagsHolder) -> Option<String> {
         let file_node = Self::parse(Rule::markdown_file, string)
             .unwrap_or_else(|e| panic!("{:?}", e))
             .next().unwrap()
             .into_inner().next().unwrap();
 
-        let mut ctx = Self::new();
+        let mut ctx = Self::new(ctx);
         ctx.recursive_markdown_parser(file_node)?;
 
         Some(ctx.contents)
@@ -116,7 +118,21 @@ impl FakeMarkdownParser {
 
 #[cfg(test)]
 mod tests {
-    use crate::grammer::FakeMarkdownParser;
+    use crate::{grammer::FakeMarkdownParser, flags::FlagsHolder};
+
+    fn default_ctx() -> FlagsHolder {
+        FlagsHolder::new(vec!["abc".to_owned(), "bbb".to_owned()])
+    }
+
+    #[test]
+    fn check_iden_usage() {
+        let input = r#"@if_a 111 @elif_b 222 @else 333 @file_c @end"#;
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::default()), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["a".to_owned()])), Some("111 ".to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["b".to_owned()])), Some("222 ".to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["c".to_owned()])), Some("333 ".to_owned()));
+    }
+
 
     #[test]
     fn backticks_escape_works() {
@@ -134,7 +150,7 @@ mod tests {
             ```
             And also the same in code snippets `@file_you_dont_have_this` and `@if_aaaa ss @else ssf @end`.
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), Some(input.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), Some(input.to_owned()));
     }
 
     #[test]
@@ -143,7 +159,7 @@ mod tests {
             Some text!
             @file_no_way_you_have_this
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), None);
     }
 
     #[test]
@@ -155,7 +171,7 @@ mod tests {
         let exp = r#"
             Some text!
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -167,7 +183,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -183,7 +199,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -199,7 +215,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -216,7 +232,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
         let input = r#"
             @if_not_here
             111
@@ -227,7 +243,7 @@ mod tests {
             @file_not_here
             @end
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
     }
 
     #[test]
@@ -241,7 +257,7 @@ mod tests {
             @file_not_here
             @else
         "#;
-        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim());
+        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx());
     }
 
     #[test]
@@ -255,6 +271,6 @@ mod tests {
             aaa
             @end
         "#;
-        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim());
+        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx());
     }
 }
