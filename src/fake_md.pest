@@ -10,13 +10,15 @@ flag_end = { "@end" ~ trailing_whitespace_with_trim }
 flag_file = { "@file_" ~ identifier ~ trailing_whitespace_with_trim }
 
 code_section_delim = { "```" }
+code_snippet_delim = { "`" }
 
-text = { (!(flag_if|flag_elif|flag_else|flag_end|flag_file|code_section_delim) ~ ANY)+ }
+text = { (!(flag_if|flag_elif|flag_else|flag_end|flag_file|code_section_delim|code_snippet_delim) ~ ANY)+ }
 
 flag_statement = { flag_if ~ markdown ~ (flag_elif ~ markdown)*  ~ (flag_else ~ markdown)? ~ flag_end }
 
 code_section = { code_section_delim ~ (!code_section_delim ~ ANY)* ~ code_section_delim }
+code_snippet = { code_snippet_delim ~ (!code_snippet_delim ~ ANY)+ ~ code_snippet_delim }
 
-markdown = { (flag_statement | flag_file | code_section | text)* }
+markdown = { (flag_statement | flag_file | code_section | code_snippet | text)* }
 
 markdown_file = { SOI ~ markdown ~ EOI }

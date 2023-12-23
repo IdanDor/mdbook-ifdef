@@ -56,7 +56,7 @@ fn main() -> Result<(), Error> {
                 use mdbook_censored::grammer::FakeMarkdownParser;
                 for path in target.iter() {
                     let string = fs::read_to_string(path)?;
-                    println!("Result: {:?}", FakeMarkdownParser::test_fake_markdown_parser(&string));
+                    println!("Result: {:?}", FakeMarkdownParser::fake_markdown_parse_and_clean(&string));
                 }
             }
             Ok(())

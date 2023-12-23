@@ -1,7 +1,18 @@
 use core::panic;
 
+use regex::Regex;
+use once_cell::sync::OnceCell;
+
 use pest_derive::Parser;
 use pest::{Parser, iterators::Pair};
+
+
+fn static_regex() -> &'static Regex {
+    static FLAG_REGEX: OnceCell<Regex> = OnceCell::new();
+    FLAG_REGEX.get_or_init(|| {
+        Regex::new(r"@(if|elif|else|end|file)").unwrap()
+    })
+}
 
 
 #[derive(Parser)]
@@ -66,9 +77,23 @@ impl FakeMarkdownParser {
         for inner_pair in node.into_inner() {
             let rule = inner_pair.as_rule();
             match rule {
-                Rule::flag_statement => {self.recursive_flag_statement_parser(inner_pair)?},
-                Rule::flag_file => {self.check_file_flag(inner_pair)?},
-                Rule::code_section | Rule::text => {self.contents.push_str(inner_pair.as_str())},
+                Rule::flag_statement => {
+                    self.recursive_flag_statement_parser(inner_pair)?
+                },
+                Rule::flag_file => {
+                    self.check_file_flag(inner_pair)?
+                },
+                Rule::code_section | Rule::code_snippet | Rule::text => {
+                    if rule == Rule::text {
+                        // To prevent accidental misusage of the fake markdown tools we which to check if the text includes problematic stuff.
+                        for m in static_regex().find_iter(inner_pair.as_str()) {
+                            // We have found a match for probably accidental misusage of our api flags.
+                            eprintln!("Found suspected misusage of preparser stuff {:?}, skipping this section. If this is intentional, use `around it`", m.as_str());
+                            return None;
+                        }
+                    }
+                    self.contents.push_str(inner_pair.as_str())
+                },
                 _ => {panic!("Unexpected type {rule:?} inside markdown")}
             };
         }
@@ -76,13 +101,13 @@ impl FakeMarkdownParser {
         Some(())
     }
 
-    pub fn test_fake_markdown_parser(string: &str) -> Option<String> {
-        let file_node = FakeMarkdownParser::parse(Rule::markdown_file, string)
+    pub fn fake_markdown_parse_and_clean(string: &str) -> Option<String> {
+        let file_node = Self::parse(Rule::markdown_file, string)
             .unwrap_or_else(|e| panic!("{:?}", e))
             .next().unwrap()
             .into_inner().next().unwrap();
 
-        let mut ctx = FakeMarkdownParser::new();
+        let mut ctx = Self::new();
         ctx.recursive_markdown_parser(file_node)?;
 
         Some(ctx.contents)
@@ -94,7 +119,7 @@ mod tests {
     use crate::grammer::FakeMarkdownParser;
 
     #[test]
-    fn code_section_works() {
+    fn backticks_escape_works() {
         let input = r#"
             I can write lots of stuff.
             Special Sym@bols, and even more special symbols inside code section.
@@ -107,8 +132,9 @@ mod tests {
             option3 and @file_aaaaa
             @end
             ```
+            And also the same in code snippets `@file_you_dont_have_this` and `@if_aaaa ss @else ssf @end`.
         "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input), Some(input.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), Some(input.to_owned()));
     }
 
     #[test]
@@ -117,7 +143,7 @@ mod tests {
             Some text!
             @file_no_way_you_have_this
         "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), None);
     }
 
     #[test]
@@ -129,7 +155,7 @@ mod tests {
         let exp = r#"
             Some text!
             "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input), Some(exp.to_owned()));
     }
 
     #[test]
@@ -141,7 +167,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -157,7 +183,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -173,7 +199,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
     }
 
     #[test]
@@ -190,7 +216,7 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input.trim()), Some(exp.to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), Some(exp.to_owned()));
         let input = r#"
             @if_not_here
             111
@@ -201,6 +227,34 @@ mod tests {
             @file_not_here
             @end
         "#;
-        assert_eq!(FakeMarkdownParser::test_fake_markdown_parser(input.trim()), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim()), None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_misusage_protection_cut_if() {
+        let input = r#"
+            @if_not_here
+            111
+            @elif_not_here
+            222
+            @file_not_here
+            @else
+        "#;
+        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_misusage_protection_missing_if() {
+        let input = r#"
+            @elif_not_here
+            222
+            @file_not_here
+            @else
+            aaa
+            @end
+        "#;
+        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim());
     }
 }
