@@ -3,11 +3,12 @@ trailing_whitespace = { white_no_newline* ~ "\n"? }
 trailing_whitespace_with_trim = { trailing_whitespace ~ white_no_newline* }
 
 identifier = { (ASCII_ALPHANUMERIC|"_")+ }
-flag_if = { "@if_" ~ identifier ~ trailing_whitespace_with_trim }
-flag_elif = { "@elif_" ~ identifier ~ trailing_whitespace_with_trim }
-flag_else = { "@else" ~ trailing_whitespace_with_trim }
-flag_end = { "@end" ~ trailing_whitespace_with_trim }
-flag_file = { "@file_" ~ identifier ~ trailing_whitespace_with_trim }
+// Case insensitive flags
+flag_if = { ^"@if_" ~ identifier ~ trailing_whitespace_with_trim }
+flag_elif = { ^"@elif_" ~ identifier ~ trailing_whitespace_with_trim }
+flag_else = { ^"@else" ~ trailing_whitespace_with_trim }
+flag_end = { ^"@end" ~ trailing_whitespace_with_trim }
+flag_file = { ^"@file_" ~ identifier ~ trailing_whitespace_with_trim }
 
 code_section_delim = { "```" }
 code_snippet_delim = { "`" }

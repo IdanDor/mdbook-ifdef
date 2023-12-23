@@ -6,6 +6,8 @@
     clippy::nursery,
     clippy::pedantic
 )]
+use std::collections::HashSet;
+
 use mdbook::BookItem;
 use mdbook::book::{Book, Chapter};
 use mdbook::errors::Error;
@@ -14,27 +16,21 @@ use mdbook::preprocess::{PreprocessorContext, Preprocessor};
 pub mod grammer;
 use grammer::FakeMarkdownParser;
 
-pub mod flags;
-use flags::FlagsHolder;
 
+#[derive(Default)]
 pub struct IfdefProcessor {
-    flags: FlagsHolder,
-}
-
-
-impl Default for IfdefProcessor {
-    fn default() -> Self {
-        IfdefProcessor{flags: FlagsHolder::default()}
-    }
+    flags: HashSet<String>,
 }
 
 impl IfdefProcessor {
-    pub fn new(flags: FlagsHolder) -> Self {
-        IfdefProcessor{flags}
+    #[must_use]
+    pub const fn new(flags: HashSet<String>) -> Self {
+        Self{flags}
     }
 
+    #[must_use]
     pub fn from_vec(flags: Vec<String>) -> Self {
-        IfdefProcessor{flags: FlagsHolder::new(flags)}
+        Self{flags: flags.into_iter().collect::<HashSet<_>>()}
     }
 
     fn process_chapter(&self, mut chapter: Chapter) -> Option<Chapter> {
@@ -42,9 +38,9 @@ impl IfdefProcessor {
         chapter.content = FakeMarkdownParser::fake_markdown_parse_and_clean(&chapter.content, &self.flags)?;
 
         // Handle sub items recursively.
-        chapter.sub_items = chapter.sub_items.into_iter().map(
+        chapter.sub_items = chapter.sub_items.into_iter().filter_map(
             |item| self.process_item(item)
-        ).flatten().collect();
+        ).collect();
 
         // Return the chapter.
         Some(chapter)
@@ -64,9 +60,9 @@ impl Preprocessor for IfdefProcessor {
     }
 
     fn run(&self, _ctx: &PreprocessorContext, mut book: Book) -> Result<Book, Error> { 
-        book.sections = book.sections.into_iter().map(
+        book.sections = book.sections.into_iter().filter_map(
             |item| self.process_item(item)
-        ).flatten().collect();
+        ).collect();
 
         Ok(book)
     }

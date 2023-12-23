@@ -8,6 +8,7 @@ description = "Package for ifdef-like capabilities  and removing subsections/cha
 readme = "README.md"
 keywords = ["book", "mdbook", "rustbook", "ifdef"]
 categories = ["text-processing", "command-line-interface"]
+repository = "https://github.com/idandor/mdbook-ifdef"
 
 [[bin]]
 name = "mdbook-ifdef"

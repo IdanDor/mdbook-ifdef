@@ -1,12 +1,11 @@
 use core::panic;
+use std::collections::HashSet;
 
 use regex::Regex;
 use once_cell::sync::OnceCell;
 
 use pest_derive::Parser;
 use pest::{Parser, iterators::Pair};
-
-use crate::flags::FlagsHolder;
 
 
 fn static_regex() -> &'static Regex {
@@ -21,12 +20,12 @@ fn static_regex() -> &'static Regex {
 #[grammar = "fake_md.pest"]
 pub struct FakeMarkdownParser<'a> {
     contents: String,
-    ctx: &'a FlagsHolder
+    ctx: &'a HashSet<String>
 }
 
 impl<'a> FakeMarkdownParser<'a> {
-    fn new(ctx: &FlagsHolder) -> FakeMarkdownParser {
-        FakeMarkdownParser{contents: String::new(), ctx}
+    const fn new(ctx: &'a HashSet<String>) -> FakeMarkdownParser {
+        Self{contents: String::new(), ctx}
     }
 
     fn check_file_flag(&mut self, node: Pair<'_, Rule>) -> Option<()> {
@@ -46,14 +45,7 @@ impl<'a> FakeMarkdownParser<'a> {
         for inner_pair in node.into_inner() {
             let rule = inner_pair.as_rule();
             match rule {
-                Rule::flag_if => {
-                    // file_flag only has identifier and unwanted whitespace.
-                    let iden = inner_pair.into_inner().next().unwrap().as_str();
-                    if self.ctx.contains(iden) {
-                        add_next = true;
-                    }
-                },
-                Rule::flag_elif => {
+                Rule::flag_if | Rule::flag_elif => {
                     // file_flag only has identifier and unwanted whitespace.
                     let iden = inner_pair.into_inner().next().unwrap().as_str();
                     if self.ctx.contains(iden) {
@@ -80,21 +72,21 @@ impl<'a> FakeMarkdownParser<'a> {
             let rule = inner_pair.as_rule();
             match rule {
                 Rule::flag_statement => {
-                    self.recursive_flag_statement_parser(inner_pair)?
+                    self.recursive_flag_statement_parser(inner_pair)?;
                 },
                 Rule::flag_file => {
-                    self.check_file_flag(inner_pair)?
+                    self.check_file_flag(inner_pair)?;
                 },
                 Rule::code_section | Rule::code_snippet | Rule::text => {
                     if rule == Rule::text {
                         // To prevent accidental misusage of the fake markdown tools we which to check if the text includes problematic stuff.
-                        for m in static_regex().find_iter(inner_pair.as_str()) {
+                        if let Some(m) = static_regex().find_iter(inner_pair.as_str()).next() {
                             // We have found a match for probably accidental misusage of our api flags.
                             eprintln!("Found suspected misusage of preparser stuff {:?}, skipping this section. If this is intentional, use `around it`", m.as_str());
                             return None;
                         }
                     }
-                    self.contents.push_str(inner_pair.as_str())
+                    self.contents.push_str(inner_pair.as_str());
                 },
                 _ => {panic!("Unexpected type {rule:?} inside markdown")}
             };
@@ -103,11 +95,12 @@ impl<'a> FakeMarkdownParser<'a> {
         Some(())
     }
 
-    pub fn fake_markdown_parse_and_clean(string: &str, ctx: &FlagsHolder) -> Option<String> {
+    #[must_use]
+    pub fn fake_markdown_parse_and_clean(string: &str, ctx: &'a HashSet<String>) -> Option<String> {
         let file_node = Self::parse(Rule::markdown_file, string)
-            .unwrap_or_else(|e| panic!("{:?}", e))
-            .next().unwrap()
-            .into_inner().next().unwrap();
+            .map_err(|e| {eprintln!("Error when processing file: {e:?}"); e}).ok()?
+            .next()?
+            .into_inner().next()?;
 
         let mut ctx = Self::new(ctx);
         ctx.recursive_markdown_parser(file_node)?;
@@ -118,19 +111,22 @@ impl<'a> FakeMarkdownParser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{grammer::FakeMarkdownParser, flags::FlagsHolder};
+    use std::collections::HashSet;
 
-    fn default_ctx() -> FlagsHolder {
-        FlagsHolder::new(vec!["abc".to_owned(), "bbb".to_owned()])
+    use crate::grammer::FakeMarkdownParser;
+
+    fn default_ctx() -> HashSet<String> {
+        vec!["abc".to_owned(), "bbb".to_owned()].into_iter().collect::<HashSet<_>>()
     }
 
     #[test]
     fn check_iden_usage() {
         let input = r#"@if_a 111 @elif_b 222 @else 333 @file_c @end"#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::default()), None);
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["a".to_owned()])), Some("111 ".to_owned()));
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["b".to_owned()])), Some("222 ".to_owned()));
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &FlagsHolder::new(vec!["c".to_owned()])), Some("333 ".to_owned()));
+        let empty_ctx = HashSet::default();
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &empty_ctx), None);
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["a".to_owned()].into_iter().collect::<HashSet<_>>()), Some("111 ".to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["b".to_owned()].into_iter().collect::<HashSet<_>>()), Some("222 ".to_owned()));
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["c".to_owned()].into_iter().collect::<HashSet<_>>()), Some("333 ".to_owned()));
     }
 
 
@@ -247,7 +243,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_misusage_protection_cut_if() {
         let input = r#"
             @if_not_here
@@ -257,11 +252,10 @@ mod tests {
             @file_not_here
             @else
         "#;
-        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx());
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
     }
 
     #[test]
-    #[should_panic]
     fn test_misusage_protection_missing_if() {
         let input = r#"
             @elif_not_here
@@ -271,6 +265,6 @@ mod tests {
             aaa
             @end
         "#;
-        FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx());
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
     }
 }

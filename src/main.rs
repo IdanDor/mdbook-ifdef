@@ -6,6 +6,7 @@
     clippy::nursery,
     clippy::pedantic
 )]
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -13,9 +14,7 @@ use clap::{Parser, Subcommand};
 use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor};
 
-
 use mdbook_ifdef::IfdefProcessor;
-use mdbook_ifdef::flags::FlagsHolder;
 
 #[derive(Parser, Debug)]
 #[command(author, version)]
@@ -47,7 +46,7 @@ enum Subcommands {
     }
 }
 
-fn do_preprocessing(flags: FlagsHolder) -> Result<(), Error> {
+fn do_preprocessing(flags: HashSet<String>) -> Result<(), Error> {
     let (ctx, book) = CmdPreprocessor::parse_input(io::stdin())?;
 
     let ifdef = IfdefProcessor::new(flags);
@@ -58,16 +57,17 @@ fn do_preprocessing(flags: FlagsHolder) -> Result<(), Error> {
     Ok(())
 }
 
-fn parse_flags(flags_file: Option<PathBuf>, mut extra_flags: Vec<String>) -> Result<FlagsHolder, Error> {
+fn parse_flags(flags_file: Option<PathBuf>, extra_flags: Vec<String>) -> Result<HashSet<String>, Error> {
     let flags_content = match flags_file {
         Some(path) => fs::read_to_string(path)?,
         None => String::new(),
     };
 
-    let mut flags: Vec<String> = flags_content.split_ascii_whitespace().flat_map(|word| word.split(',')).map(|flag| flag.to_owned()).collect();
-    flags.append(&mut extra_flags);
-
-    Ok(FlagsHolder::new(flags))
+    Ok(flags_content.split_ascii_whitespace()
+        .flat_map(|word| word.split(',')).map(std::borrow::ToOwned::to_owned)
+        .chain(extra_flags)
+        .collect::<HashSet<_>>()
+    )
 }
 
 fn main() -> Result<(), Error> {
@@ -85,7 +85,7 @@ fn main() -> Result<(), Error> {
                 use mdbook_ifdef::grammer::FakeMarkdownParser;
 
                 println!("Using flags {:?}", &flags);
-                for path in target.iter() {
+                for path in &target {
                     println!("Staring file {path:?}");
                     let string = fs::read_to_string(path)?;
                     println!("Result: {:?}", FakeMarkdownParser::fake_markdown_parse_and_clean(&string, &flags));
@@ -95,8 +95,8 @@ fn main() -> Result<(), Error> {
         },
         None => {
             if let Err(e) = do_preprocessing(flags) {
-                eprintln!("Preprocssing failed: {:?}", e);
-                Err(e)?
+                eprintln!("Preprocssing failed: {e:?}");
+                Err(e)?;
             };
             
             Ok(())
