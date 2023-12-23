@@ -15,6 +15,9 @@ use mdbook::preprocess::{PreprocessorContext, Preprocessor};
 
 use regex::Regex;
 
+pub mod grammer;
+use grammer::FakeMarkdownParser;
+
 pub struct CensorProcessor {
     flags: HashSet<String>,
 }
@@ -42,7 +45,10 @@ impl CensorProcessor {
             }
         }
 
+        // TODO: cleanup flags? -> move file flags to pest.
+
         // Handle if/else
+        FakeMarkdownParser::test_fake_markdown_parser("a b");
 
         // Handle sub items recursively.
         chapter.sub_items = chapter.sub_items.into_iter().map(

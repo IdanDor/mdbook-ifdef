@@ -1,0 +1,22 @@
+white_no_newline = { (!"\n" ~ WHITE_SPACE) }
+trailing_whitespace = { white_no_newline* ~ "\n"? }
+trailing_whitespace_with_trim = { trailing_whitespace ~ white_no_newline* }
+
+identifier = { (ASCII_ALPHANUMERIC|"_")+ }
+flag_if = { "@if_" ~ identifier ~ trailing_whitespace_with_trim }
+flag_elif = { "@elif_" ~ identifier ~ trailing_whitespace_with_trim }
+flag_else = { "@else" ~ trailing_whitespace_with_trim }
+flag_end = { "@end" ~ trailing_whitespace_with_trim }
+flag_file = { "@file_" ~ identifier ~ trailing_whitespace_with_trim }
+
+code_section_delim = { "```" }
+
+text = { (!(flag_if|flag_elif|flag_else|flag_end|flag_file|code_section_delim) ~ ANY)+ }
+
+flag_statement = { flag_if ~ markdown ~ (flag_elif ~ markdown)*  ~ (flag_else ~ markdown)? ~ flag_end }
+
+code_section = { code_section_delim ~ (!code_section_delim ~ ANY)* ~ code_section_delim }
+
+markdown = { (flag_statement | flag_file | code_section | text)* }
+
+markdown_file = { SOI ~ markdown ~ EOI }
