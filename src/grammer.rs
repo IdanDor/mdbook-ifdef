@@ -1,19 +1,8 @@
 use core::panic;
 use std::collections::HashSet;
 
-use regex::Regex;
-use once_cell::sync::OnceCell;
-
 use pest_derive::Parser;
 use pest::{Parser, iterators::Pair};
-
-
-fn static_regex() -> &'static Regex {
-    static FLAG_REGEX: OnceCell<Regex> = OnceCell::new();
-    FLAG_REGEX.get_or_init(|| {
-        Regex::new(r"@(if|elif|else|end|file)").unwrap()
-    })
-}
 
 
 #[derive(Parser)]
@@ -78,14 +67,6 @@ impl<'a> FakeMarkdownParser<'a> {
                     self.check_file_flag(inner_pair)?;
                 },
                 Rule::code_section | Rule::code_snippet | Rule::text => {
-                    if rule == Rule::text {
-                        // To prevent accidental misusage of the fake markdown tools we which to check if the text includes problematic stuff.
-                        if let Some(m) = static_regex().find_iter(inner_pair.as_str()).next() {
-                            // We have found a match for probably accidental misusage of our api flags.
-                            eprintln!("Found suspected misusage of preparser stuff {:?}, skipping this section. If this is intentional, use `around it`", m.as_str());
-                            return None;
-                        }
-                    }
                     self.contents.push_str(inner_pair.as_str());
                 },
                 _ => {panic!("Unexpected type {rule:?} inside markdown")}
@@ -243,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn test_misusage_protection_cut_if() {
+    fn test_missing_else_not_parsed() {
         let input = r#"
             @if_not_here
             111
@@ -256,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn test_misusage_protection_missing_if() {
+    fn test_missing_if_not_parsed() {
         let input = r#"
             @elif_not_here
             222
@@ -266,5 +247,21 @@ mod tests {
             @end
         "#;
         assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
+    }
+
+    #[test]
+    fn test_case_insensitive_if() {
+        let input = r#"
+            @IF_not_here
+            @eLiF_not_here
+            222
+            @fiLL_not_here
+            @elSE
+            aaa
+            @End
+        "#;
+        let exp = r#"aaa
+            "#;
+        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
     }
 }

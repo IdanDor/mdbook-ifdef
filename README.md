@@ -58,7 +58,3 @@ This will only appear if both `flag1` and `flag2` are set.
 This the the other optional text.
 @end
 ```
-
-## Safety features
-
-After processing all the input, if any `@if` or other markings are still somewhere, a panic will occur to prevent accidental information leakage.
