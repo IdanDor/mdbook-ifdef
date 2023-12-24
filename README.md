@@ -3,6 +3,8 @@
 This package is for clearing specific sections/chapters from an mdbook according to "compilation flags".
 It amounts to ifdef like behavior with the added feature of a file-wide ifdef for removing a chapter and its sub chapters.
 
+You should also consider using [mdbook-private](https://github.com/RealAtix/mdbook-private) instead.
+
 ## Example usage
 
 We can have the following files:
