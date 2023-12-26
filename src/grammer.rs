@@ -1,20 +1,22 @@
 use core::panic;
 use std::collections::HashSet;
 
+use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
-use pest::{Parser, iterators::Pair};
-
 
 #[derive(Parser)]
 #[grammar = "fake_md.pest"]
 pub struct FakeMarkdownParser<'a> {
     contents: String,
-    ctx: &'a HashSet<String>
+    ctx: &'a HashSet<String>,
 }
 
 impl<'a> FakeMarkdownParser<'a> {
     const fn new(ctx: &'a HashSet<String>) -> FakeMarkdownParser {
-        Self{contents: String::new(), ctx}
+        Self {
+            contents: String::new(),
+            ctx,
+        }
     }
 
     fn check_file_flag(&mut self, node: Pair<'_, Rule>) -> Option<()> {
@@ -23,12 +25,13 @@ impl<'a> FakeMarkdownParser<'a> {
 
         if self.ctx.contains(iden) {
             Some(())
-        } else {  // Flag not in ctx, clear the file!
+        } else {
+            // Flag not in ctx, clear the file!
             None
         }
     }
 
-    fn recursive_flag_statement_parser(&mut self, node: Pair<'_, Rule>) -> Option<()>  {
+    fn recursive_flag_statement_parser(&mut self, node: Pair<'_, Rule>) -> Option<()> {
         let mut add_next = false;
 
         for inner_pair in node.into_inner() {
@@ -40,36 +43,40 @@ impl<'a> FakeMarkdownParser<'a> {
                     if self.ctx.contains(iden) {
                         add_next = true;
                     }
-                },
-                Rule::flag_else => {add_next = true},
-                Rule::flag_end => {},
+                }
+                Rule::flag_else => add_next = true,
+                Rule::flag_end => {}
                 Rule::markdown => {
                     if add_next {
                         self.recursive_markdown_parser(inner_pair)?;
                         return Some(());
                     }
-                },
-                _ => {panic!("Unexpected type {rule:?} inside flage_statement")}
+                }
+                _ => {
+                    panic!("Unexpected type {rule:?} inside flage_statement")
+                }
             };
         }
 
         Some(())
     }
 
-    fn recursive_markdown_parser(&mut self, node: Pair<'_, Rule>) -> Option<()>  {
+    fn recursive_markdown_parser(&mut self, node: Pair<'_, Rule>) -> Option<()> {
         for inner_pair in node.into_inner() {
             let rule = inner_pair.as_rule();
             match rule {
                 Rule::flag_statement => {
                     self.recursive_flag_statement_parser(inner_pair)?;
-                },
+                }
                 Rule::flag_file => {
                     self.check_file_flag(inner_pair)?;
-                },
+                }
                 Rule::code_section | Rule::code_snippet | Rule::text => {
                     self.contents.push_str(inner_pair.as_str());
-                },
-                _ => {panic!("Unexpected type {rule:?} inside markdown")}
+                }
+                _ => {
+                    panic!("Unexpected type {rule:?} inside markdown")
+                }
             };
         }
 
@@ -79,9 +86,14 @@ impl<'a> FakeMarkdownParser<'a> {
     #[must_use]
     pub fn fake_markdown_parse_and_clean(string: &str, ctx: &'a HashSet<String>) -> Option<String> {
         let file_node = Self::parse(Rule::markdown_file, string)
-            .map_err(|e| {eprintln!("Error when processing file: {e:?}"); e}).ok()?
+            .map_err(|e| {
+                eprintln!("Error when processing file: {e:?}");
+                e
+            })
+            .ok()?
             .next()?
-            .into_inner().next()?;
+            .into_inner()
+            .next()?;
 
         let mut ctx = Self::new(ctx);
         ctx.recursive_markdown_parser(file_node)?;
@@ -97,19 +109,41 @@ mod tests {
     use crate::grammer::FakeMarkdownParser;
 
     fn default_ctx() -> HashSet<String> {
-        vec!["abc".to_owned(), "bbb".to_owned()].into_iter().collect::<HashSet<_>>()
+        vec!["abc".to_owned(), "bbb".to_owned()]
+            .into_iter()
+            .collect::<HashSet<_>>()
     }
 
     #[test]
     fn check_iden_usage() {
         let input = r#"@if_a 111 @elif_b 222 @else 333 @file_c @end"#;
         let empty_ctx = HashSet::default();
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &empty_ctx), None);
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["a".to_owned()].into_iter().collect::<HashSet<_>>()), Some("111 ".to_owned()));
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["b".to_owned()].into_iter().collect::<HashSet<_>>()), Some("222 ".to_owned()));
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &vec!["c".to_owned()].into_iter().collect::<HashSet<_>>()), Some("333 ".to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input, &empty_ctx),
+            None
+        );
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(
+                input,
+                &vec!["a".to_owned()].into_iter().collect::<HashSet<_>>()
+            ),
+            Some("111 ".to_owned())
+        );
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(
+                input,
+                &vec!["b".to_owned()].into_iter().collect::<HashSet<_>>()
+            ),
+            Some("222 ".to_owned())
+        );
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(
+                input,
+                &vec!["c".to_owned()].into_iter().collect::<HashSet<_>>()
+            ),
+            Some("333 ".to_owned())
+        );
     }
-
 
     #[test]
     fn backticks_escape_works() {
@@ -127,7 +161,10 @@ mod tests {
             ```
             And also the same in code snippets `@file_you_dont_have_this` and `@if_aaaa ss @else ssf @end`.
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), Some(input.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()),
+            Some(input.to_owned())
+        );
     }
 
     #[test]
@@ -136,7 +173,10 @@ mod tests {
             Some text!
             @file_no_way_you_have_this
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), None);
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()),
+            None
+        );
     }
 
     #[test]
@@ -148,7 +188,10 @@ mod tests {
         let exp = r#"
             Some text!
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input, &default_ctx()),
+            Some(exp.to_owned())
+        );
     }
 
     #[test]
@@ -160,7 +203,10 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            Some(exp.to_owned())
+        );
     }
 
     #[test]
@@ -176,7 +222,10 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            Some(exp.to_owned())
+        );
     }
 
     #[test]
@@ -192,7 +241,10 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            Some(exp.to_owned())
+        );
     }
 
     #[test]
@@ -209,7 +261,10 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            Some(exp.to_owned())
+        );
         let input = r#"
             @if_not_here
             111
@@ -220,7 +275,10 @@ mod tests {
             @file_not_here
             @end
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            None
+        );
     }
 
     #[test]
@@ -233,7 +291,10 @@ mod tests {
             @file_not_here
             @else
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            None
+        );
     }
 
     #[test]
@@ -246,7 +307,10 @@ mod tests {
             aaa
             @end
         "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), None);
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            None
+        );
     }
 
     #[test]
@@ -262,6 +326,9 @@ mod tests {
         "#;
         let exp = r#"aaa
             "#;
-        assert_eq!(FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()), Some(exp.to_owned()));
+        assert_eq!(
+            FakeMarkdownParser::fake_markdown_parse_and_clean(input.trim(), &default_ctx()),
+            Some(exp.to_owned())
+        );
     }
 }
