@@ -1,0 +1,10 @@
+[book]
+authors = ["Idan Dor"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Features of mdbook-ifdef"
+text-direction = "ltr"
+
+[preprocessor.ifdef]
+command = "mdbook-ifdef -f ifdef_flags.txt -e flag5"
